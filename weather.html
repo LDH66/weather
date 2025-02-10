@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>24/7 Weather</title>
+  <style>
+    body {
+      font-family: 'Arial', sans-serif;
+      margin: 0;
+      padding: 0;
+      background: linear-gradient(to bottom, #87CEEB, #FFFFFF);
+      color: #333;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+
+    h1 {
+      font-size: 2.5rem;
+      color: #ffffff;
+      background-color: #007BFF;
+      padding: 10px 20px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+    }
+
+    #location {
+      font-size: 1.2rem;
+      margin-bottom: 10px;
+    }
+
+    #current-weather {
+      font-size: 1.5rem;
+      font-weight: bold;
+      color: #007BFF;
+    }
+
+    #forecast-summary {
+      margin-top: 20px;
+      padding: 15px;
+      border-radius: 10px;
+      background-color: #fff8dc;
+      box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+      width: calc(100% - 40px);
+      max-width: 500px;
+    }
+
+    button {
+      margin-top: 10px;
+      padding: 10px 20px;
+      font-size: 1rem;
+      color: #fff;
+      background-color: #007BFF;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background-color: #0056b3;
+    }
+    
+    @media (max-width: 600px) {
+        h1 {
+          font-size: 2rem; 
+        }
+        button {
+          font-size: smaller; 
+        }
+    }
+    
+  </style>
+</head>
+<body>
+  
+<h1>24/7 Weather</h1>
+<p id="location">Fetching your location...</p>
+<p id="current-weather"></p>
+
+<div id="forecast-summary">
+  <p id="weather-summary">Loading weather summary...</p>
+</div>
+
+<button id="play-pause-btn">Play</button>
+
+<script>
+let speechSynthesisUtterance; // To store the speech synthesis utterance
+let isPlaying = false; // To track if speech is currently playing
+
+async function fetchWeather(lat, lon) {
+    try {
+        const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,weathercode&current_weather=true&forecast_days=2`;
+        const response = await fetch(weatherUrl);
+        const data = await response.json();
+
+        displayCurrentWeather(data.current_weather);
+        generateWeatherSummary(data.current_weather, data.hourly);
+    } catch (error) {
+        document.getElementById('current-weather').textContent = 'Unable to retrieve weather data.';
+        document.getElementById('weather-summary').textContent = 'Unable to generate a weather summary.';
+    }
+}
+
+function displayCurrentWeather(current) {
+    const weatherIcon = getWeatherIcon(current.weathercode);
+    document.getElementById('current-weather').innerHTML = `
+        Current Weather:<br> ${current.temperature}°C ${weatherIcon}
+    `;
+}
+
+function generateWeatherSummary(current, hourly) {
+    const location = document.getElementById('location').textContent.replace('Your Location:', '').trim();
+    const currentTemp = current.temperature;
+
+    // Get the average temperature for the next day
+    const next24HoursTemps = hourly.temperature_2m.slice(1, 25); // Next day temperatures
+    const avgTemp = (next24HoursTemps.reduce((a, b) => a + b, 0) / next24HoursTemps.length).toFixed(1);
+
+    // Generate a detailed weather summary with approximately 100 words
+    const summaryText = `Hi. Here's the weather forecast for ${location}. The current temperature is ${currentTemp}°C with clear skies. Over the next day, you can expect an average temperature of ${avgTemp}°C. Conditions may vary slightly with occasional clouds or light winds. Overall, it looks like a pleasant day ahead with no major disruptions expected. Make sure to stay hydrated and dress appropriately for the temperature. And that's all the weather news for now. Have a great day!`;
+
+    document.getElementById('weather-summary').textContent = summaryText;
+
+    // Prepare speech synthesis
+    prepareSpeech(summaryText);
+}
+
+function getWeatherIcon(code) {
+    const iconMap = {
+        0: '☀️', 1: '🌤️', 2: '⛅', 3: '☁️',
+        45: '🌫️', 48: '🌫️',
+        51: '🌦️', 53: '🌦️', 55: '🌦️',
+        61: '🌧️', 63: '🌧️', 65: '🌧️',
+        71: '🌨️', 73: '🌨️', 75: '🌨️',
+        80: '🌦️', 81: '🌦️', 82: '🌦️',
+        95: '⛈️', 96: '⛈️', 99: '⛈️'
+    };
+    return iconMap[code] || '❓';
+}
+
+async function fetchCityName(lat, lon) {
+    try {
+        const geocodeResponse = await fetch(`https://geocode.xyz/${lat},${lon}?json=1`);
+        const geocodeData = await geocodeResponse.json();
+        return geocodeData.city || "Unknown Location";
+    } catch (error) {
+        return "Unknown Location";
+    }
+}
+
+function prepareSpeech(text) {
+    speechSynthesis.cancel(); // Cancel any ongoing speech
+    speechSynthesisUtterance = new SpeechSynthesisUtterance(text);
+
+    // Select a female voice explicitly
+    const voices = speechSynthesis.getVoices();
+    speechSynthesisUtterance.voice =
+        voices.find((voice) => voice.name.toLowerCase().includes("female")) ||
+        voices.find((voice) => voice.lang === "en-US") ||
+        null;
+
+    speechSynthesisUtterance.rate = 1; // Normal speaking rate
+}
+
+document.getElementById('play-pause-btn').addEventListener('click', () => {
+    if (!speechSynthesisUtterance) return; // Do nothing if no text is prepared
+
+    if (isPlaying) {
+        speechSynthesis.pause();
+        document.getElementById('play-pause-btn').textContent = "Play";
+        isPlaying = false;
+    } else {
+        if (speechSynthesis.paused) {
+            speechSynthesis.resume();
+        } else {
+            speechSynthesis.speak(speechSynthesisUtterance);
+        }
+        document.getElementById('play-pause-btn').textContent = "Pause";
+        isPlaying = true;
+    }
+});
+
+if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(async (position) => {
+        const { latitude, longitude } = position.coords;
+        const cityName = await fetchCityName(latitude, longitude);
+        document.getElementById('location').textContent = `Your Location: ${cityName}`;
+        fetchWeather(latitude, longitude);
+    }, () => {
+        document.getElementById('location').textContent = 'Unable to retrieve your location.';
+        document.getElementById('weather-summary').textContent = 'Unable to generate a weather summary.';
+    });
+} else {
+    document.getElementById('location').textContent = 'Geolocation is not supported by your browser.';
+}
+</script>
+</body>
+</html>
